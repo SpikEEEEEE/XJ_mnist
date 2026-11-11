@@ -18,7 +18,6 @@ class CNN(nn.Module):
         self.fc1 = nn.Linear(64 * 7 * 7, 128)
         self.relu3 = nn.ReLU()
         self.fc2 = nn.Linear(128, 10)
-        self.loss_fn = nn.CrossEntropyLoss()
 
     def forward(self, x):
         x = self.conv1(x)
@@ -27,7 +26,7 @@ class CNN(nn.Module):
         x = self.conv2(x)
         x = self.relu2(x)
         x = self.pool2(x)
-        x = torch.flatten(x, start_dim=1)
+        x = x.view(-1, 64 * 7 * 7)
         x = self.fc1(x)
         x = self.relu3(x)
         x = self.fc2(x)
@@ -37,7 +36,7 @@ class CNN(nn.Module):
         self.train()
         optimizer.zero_grad()
         y_pred = self(x)
-        loss = self.loss_fn(y_pred, y)
+        loss = nn.CrossEntropyLoss()(y_pred, y)
         loss.backward()
         optimizer.step()
         return loss.item()
@@ -47,13 +46,14 @@ class CNN(nn.Module):
         total_loss = 0.0
         total_correct = 0
         total_samples = 0
+        loss_fn = nn.CrossEntropyLoss(reduction="sum")
+
         with torch.no_grad():
             for x, y in loader:
                 logits = self(x)
-                batch_size = y.size(0)
-                total_loss += self.loss_fn(logits, y).item() * batch_size
+                total_loss += loss_fn(logits, y).item()
                 total_correct += (logits.argmax(dim=1) == y).sum().item()
-                total_samples += batch_size
+                total_samples += y.size(0)
 
         return total_loss / total_samples, total_correct / total_samples
         
@@ -61,29 +61,23 @@ class CNN(nn.Module):
 def main():
     transform = transforms.ToTensor()
 
-    train_data = datasets.FashionMNIST(
+    fashion_mnist = datasets.FashionMNIST(
         root="./data",
         train=True,
         download=True,
         transform=transform,
     )
-    test_data = datasets.FashionMNIST(
-        root="./data",
-        train=False,
-        download=True,
-        transform=transform,
-    )
 
     train_loader = DataLoader(
-        train_data,
+        fashion_mnist,
         batch_size=64,
         shuffle=True,
     )
 
     test_loader = DataLoader(
-        test_data,
+        fashion_mnist,
         batch_size=64,
-        shuffle=False,
+        shuffle=True,
     )
 
     model = CNN()
@@ -93,10 +87,6 @@ def main():
     )
 
     epochs = 20
-    train_losses = []
-    test_losses = []
-    test_accs = []
-
     for epoch in range(epochs):
         model.train()
         total_train_loss = 0.0
@@ -110,17 +100,9 @@ def main():
 
         train_loss = total_train_loss / total_train_samples
 
-        test_loss, test_acc = model.evaluate(test_loader)
-        train_losses.append(train_loss)
-        test_losses.append(test_loss)
-        test_accs.append(test_acc)
+        test_loss, test_acc = model.evaluate(x, y)
         
-        print(
-            f"Epoch {epoch + 1}/{epochs}, "
-            f"Train Loss: {train_loss:.4f}, "
-            f"Test Loss: {test_loss:.4f}, "
-            f"Test Acc: {test_acc:.4f}"
-        )
+        print(f"Epoch {epoch}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}, Test Acc: {test_acc:.4f}")
 
     plt.plot(train_losses, label="Train Loss")
     plt.plot(test_losses, label="Test Loss")
